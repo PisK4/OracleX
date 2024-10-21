@@ -12,4 +12,5 @@ library Errors {
     error SignatureVerificationFailure();
     error MutiSignatureNotEnough();
     error SignatureLengthError();
+    error MissionSuspended();
 }

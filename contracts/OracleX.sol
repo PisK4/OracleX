@@ -9,51 +9,16 @@ import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/Messa
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 
 import {Errors} from "./library/Errors.sol";
-import {ProofParseLib, ProofStructLib} from "./library/ProofParse.sol";
+import {IOracleX} from "./interface/IOracleX.sol";
+import {ProofParseLib} from "./library/ProofParseLib.sol";
 
-enum QueryMode {
-    SIGNATURE,
-    MULTISIG,
-    PROOF
-}
-
-struct DataQuery {
-    bytes32 subId;
-    bytes1 queryMode;
-    address callbackAddress;
-    address managerAddress;
-    uint64 callbackGasLimit;
-    bytes extraParams;
-}
-
-struct DataQueryRecord {
-    address managerAddress;  // 20 bytes
-    bytes1 queryMode;        // 1 byte
-    bytes11 rsv11bytes;      // 11 bytes
-}
-
-event DataQueryExecuted(
-    bytes32 indexed requestId,
-    uint256 indexed nonce,
-    DataQuery dataQuery
-);
-
-event DataQueryFallback(
-    bytes32 indexed requestId
-);
-
-event DataQueryCancelled(
-    bytes32 indexed requestId
-);
-
-event DataCommitmentExecuted(
-    bytes32 indexed requestId,
-    uint256 indexed taskId,
-    address indexed callbackAddress,
-    QueryMode queryMode
-);
-
-contract OracleXClient is Initializable, UUPSUpgradeable, AccessControlUpgradeable, ReentrancyGuardUpgradeable  {
+contract OracleX is
+    IOracleX,
+    Initializable,
+    UUPSUpgradeable,
+    AccessControlUpgradeable,
+    ReentrancyGuardUpgradeable
+{
     using MessageHashUtils for bytes32;
     using ProofParseLib for bytes;
     using ECDSA for bytes32;
@@ -62,18 +27,21 @@ contract OracleXClient is Initializable, UUPSUpgradeable, AccessControlUpgradeab
 
     bytes32 public constant VALIDATOR_ROLE = keccak256("VALIDATOR_ROLE");
 
-    bytes32 public constant FALLBACK_MANAGER_ROLE = keccak256("FALLBACK_MANAGER_ROLE");
+    bytes32 public constant FALLBACK_MANAGER_ROLE =
+        keccak256("FALLBACK_MANAGER_ROLE");
 
     bytes32 public constant SIGNER_ROLE = keccak256("SIGNER_ROLE");
 
     bytes32 public constant VERIFIER_MANAGER_ROLE =
         keccak256("VERIFIER_MANAGER_ROLE");
 
-    mapping(bytes32 => DataQueryRecord) public dataQueries;
+    mapping(bytes32 => QueryRecord) public queryRecords;
 
-    uint256 private _nonce = 0;
+    uint256 private _nonce;
 
-    uint8 private _mutiSigThreshold = 0;
+    uint8 private _mutiSigThreshold;
+
+    mapping(bytes32 => bytes) public activeData;
 
     mapping(uint256 => address) public verifiers;
 
@@ -81,26 +49,51 @@ contract OracleXClient is Initializable, UUPSUpgradeable, AccessControlUpgradeab
 
     /// ********* interaction start ***********
 
-    function dataQuerySubmit(
-        DataQuery calldata dataQuery
-    ) external  returns (bytes32 requestId) {
+    function queryPassiveDataStreamFromOracleX(
+        QueryPassiveMode calldata dataQuery
+    ) external override returns (bytes32 requestId) {
         requestId = keccak256(abi.encode(_nonce, dataQuery));
-        dataQueries[requestId] = DataQueryRecord({
+        queryRecords[requestId] = QueryRecord({
             managerAddress: dataQuery.managerAddress,
-            queryMode: dataQuery.queryMode,
-            rsv11bytes: bytes11(0)
+            authMode: dataQuery.authMode,
+            queryMode: bytes1(uint8(QueryMode.PASSIVE)),
+            suspended: false,
+            rsv9bytes: bytes9(0)
         });
-        emit DataQueryExecuted(requestId, _nonce++, dataQuery);
+        emit QueryPassiveModeSubmitted(requestId, _nonce++, dataQuery);
+    }
+
+    function queryActiveDataStreamFromOracleX(
+        QueryActiveMode calldata dataQuery
+    ) external override {
+        queryRecords[dataQuery.subId] = QueryRecord({
+            managerAddress: dataQuery.managerAddress,
+            authMode: dataQuery.authMode,
+            queryMode: bytes1(uint8(QueryMode.ACTIVE)),
+            suspended: false,
+            rsv9bytes: bytes9(0)
+        });
+        emit QueryActiveModeSubmitted(dataQuery.subId, dataQuery);
+    }
+
+    function fetchActiveDataStreamFromOracleX(
+        bytes32 subId
+    ) external view override returns (bytes memory dataQuery) {
+        dataQuery = activeData[subId];
     }
 
     function dataCommitmentByProof(
         bytes calldata dataCommitmentProof
-    ) external onlyRole(RELAYER_ROLE) nonReentrant {
-        ProofStructLib.ProofPublicInput memory proofPublicInput = dataCommitmentProof.parseProof();
-        bytes1 queryMode = bytes1(uint8(QueryMode.PROOF));
-        DataQueryRecord memory dataQueryRecord = dataQueries[proofPublicInput.requestId];
-        
-        if (dataQueryRecord.queryMode > queryMode) {
+    ) external override onlyRole(RELAYER_ROLE) nonReentrant {
+        ProofParseLib.ProofPublicInput
+            memory proofPublicInput = dataCommitmentProof.parseProof();
+        bytes1 authMode = bytes1(uint8(AuthMode.PROOF));
+        QueryRecord memory dataQueryRecord = proofPublicInput.queryMode ==
+            bytes1(uint8(QueryMode.PASSIVE))
+            ? queryRecords[proofPublicInput.requestId]
+            : queryRecords[proofPublicInput.subId];
+
+        if (dataQueryRecord.authMode > authMode) {
             revert Errors.QueryModeMismatch();
         }
 
@@ -108,19 +101,25 @@ contract OracleXClient is Initializable, UUPSUpgradeable, AccessControlUpgradeab
             revert Errors.CommitmentFailure();
         }
 
-        delete dataQueries[proofPublicInput.requestId];
+        if (dataQueryRecord.suspended) {
+            revert Errors.MissionSuspended();
+        }
+
+        delete queryRecords[proofPublicInput.requestId];
 
         {
-            (bool success, ) = _getVerifier(proofPublicInput.taskId).call(dataCommitmentProof);
+            (bool success, ) = _getVerifier(proofPublicInput.taskId).call(
+                dataCommitmentProof
+            );
             if (!success) {
                 revert Errors.ProofVerificationFailure();
             }
         }
 
-        {  
+        if (proofPublicInput.queryMode == bytes1(uint8(QueryMode.PASSIVE))) {
             (bool success, ) = proofPublicInput.callbackAddress.call{
                 gas: proofPublicInput.callbackGasLimit
-                }(
+            }(
                 abi.encodeWithSelector(
                     proofPublicInput.callbackSelector,
                     proofPublicInput.requestId,
@@ -131,14 +130,24 @@ contract OracleXClient is Initializable, UUPSUpgradeable, AccessControlUpgradeab
             if (!success) {
                 revert Errors.ProofVerificationFailure();
             }
-        }
 
-        emit DataCommitmentExecuted(
-            proofPublicInput.requestId,
-            proofPublicInput.taskId,
-            proofPublicInput.callbackAddress,
-            QueryMode.PROOF
-        );
+            emit DataCommitmentExecutedPassive(
+                proofPublicInput.requestId,
+                proofPublicInput.taskId,
+                proofPublicInput.callbackAddress,
+                AuthMode.PROOF
+            );
+        } else if (
+            proofPublicInput.queryMode == bytes1(uint8(QueryMode.ACTIVE))
+        ) {
+            activeData[proofPublicInput.subId] = proofPublicInput.data;
+            emit DataCommitmentExecutedActive(
+                proofPublicInput.subId,
+                AuthMode.PROOF
+            );
+        } else {
+            revert Errors.NotImplement();
+        }
     }
 
     function dataCommitmentBySignature(
@@ -148,11 +157,13 @@ contract OracleXClient is Initializable, UUPSUpgradeable, AccessControlUpgradeab
         uint64 callbackGasLimit,
         bytes calldata data,
         bytes[] calldata dataCommitmentSignatures
-    ) external onlyRole(RELAYER_ROLE) nonReentrant {
-        QueryMode queryMode = dataCommitmentSignatures.length > 0 ? QueryMode.SIGNATURE : QueryMode.MULTISIG;
-        DataQueryRecord memory dataQueryRecord = dataQueries[requestId];
-        
-        if (dataQueryRecord.queryMode > bytes1(uint8(queryMode))) {
+    ) external override onlyRole(RELAYER_ROLE) nonReentrant {
+        AuthMode authMode = dataCommitmentSignatures.length > 0
+            ? AuthMode.SIGNATURE
+            : AuthMode.MULTISIG;
+        QueryRecord memory dataQueryRecord = queryRecords[requestId];
+
+        if (dataQueryRecord.authMode > bytes1(uint8(authMode))) {
             revert Errors.QueryModeMismatch();
         }
 
@@ -160,21 +171,30 @@ contract OracleXClient is Initializable, UUPSUpgradeable, AccessControlUpgradeab
             revert Errors.CommitmentFailure();
         }
 
-        delete dataQueries[requestId];
+        if (dataQueryRecord.suspended) {
+            revert Errors.MissionSuspended();
+        }
+
+        delete queryRecords[requestId];
 
         uint8 signerCounts = 0;
         for (uint256 i = 0; i < dataCommitmentSignatures.length; i++) {
-            if (!_signatureVerify(keccak256(
-                abi.encode(
-                    address(this),
-                    block.chainid,
-                    callbackSelector, 
-                    requestId,
-                    callbackAddress,
-                    callbackGasLimit,
-                    data
+            if (
+                !_signatureVerify(
+                    keccak256(
+                        abi.encode(
+                            address(this),
+                            block.chainid,
+                            callbackSelector,
+                            requestId,
+                            callbackAddress,
+                            callbackGasLimit,
+                            data
+                        )
+                    ),
+                    dataCommitmentSignatures[i]
                 )
-            ), dataCommitmentSignatures[i])) {
+            ) {
                 revert Errors.SignatureVerificationFailure();
             }
             signerCounts++;
@@ -182,21 +202,15 @@ contract OracleXClient is Initializable, UUPSUpgradeable, AccessControlUpgradeab
 
         if (signerCounts == 0) {
             revert Errors.SignatureLengthError();
-        }else if (signerCounts > 1) {
+        } else if (signerCounts > 1) {
             if (signerCounts < _mutiSigThreshold) {
                 revert Errors.MutiSignatureNotEnough();
             }
         }
 
-        {  
-            (bool success, ) = callbackAddress.call{
-                gas: callbackGasLimit
-                }(
-                abi.encodeWithSelector(
-                    callbackSelector,
-                    requestId,
-                    data
-                )
+        {
+            (bool success, ) = callbackAddress.call{gas: callbackGasLimit}(
+                abi.encodeWithSelector(callbackSelector, requestId, data)
             );
 
             if (!success) {
@@ -204,29 +218,81 @@ contract OracleXClient is Initializable, UUPSUpgradeable, AccessControlUpgradeab
             }
         }
 
-        emit DataCommitmentExecuted(
+        emit DataCommitmentExecutedPassive(
             requestId,
             0,
             callbackAddress,
-            queryMode
+            authMode
         );
     }
 
-    function dataQueryCancel(
-        bytes32 requestId
-    ) external {
-        if (msg.sender != dataQueries[requestId].managerAddress) {
+    function dataCommitmentBySignature(
+        bytes32 subId,
+        bytes calldata data,
+        bytes[] calldata dataCommitmentSignatures
+    ) external override onlyRole(RELAYER_ROLE) nonReentrant {
+        AuthMode authMode = dataCommitmentSignatures.length > 0
+            ? AuthMode.SIGNATURE
+            : AuthMode.MULTISIG;
+        QueryRecord memory dataQueryRecord = queryRecords[subId];
+
+        if (dataQueryRecord.authMode > bytes1(uint8(authMode))) {
+            revert Errors.QueryModeMismatch();
+        }
+
+        if (dataQueryRecord.managerAddress == address(0)) {
+            revert Errors.CommitmentFailure();
+        }
+
+        uint8 signerCounts = 0;
+        for (uint256 i = 0; i < dataCommitmentSignatures.length; i++) {
+            if (
+                !_signatureVerify(
+                    keccak256(
+                        abi.encode(address(this), block.chainid, subId, data)
+                    ),
+                    dataCommitmentSignatures[i]
+                )
+            ) {
+                revert Errors.SignatureVerificationFailure();
+            }
+            signerCounts++;
+        }
+
+        if (signerCounts == 0) {
+            revert Errors.SignatureLengthError();
+        } else if (signerCounts > 1) {
+            if (signerCounts < _mutiSigThreshold) {
+                revert Errors.MutiSignatureNotEnough();
+            }
+        }
+
+        activeData[subId] = data;
+
+        emit DataCommitmentExecutedActive(subId, authMode);
+    }
+
+    function dataQueryCancel(bytes32 id) external override {
+        if (msg.sender != queryRecords[id].managerAddress) {
             revert Errors.AccessDenied();
         }
-        delete dataQueries[requestId];
-        emit DataQueryCancelled(requestId);
+        delete queryRecords[id];
+        emit DataQueryCancelled(id);
+    }
+
+    function dataQuerySuspend(bytes32 id) external override {
+        if (msg.sender != queryRecords[id].managerAddress) {
+            revert Errors.AccessDenied();
+        }
+        queryRecords[id].suspended = true;
+        emit DataQuerySuspended(id);
     }
 
     function dataQueryFallback(
-        bytes32 requestId
-    ) external onlyRole(FALLBACK_MANAGER_ROLE) {
-        delete dataQueries[requestId];
-        emit DataQueryFallback(requestId);
+        bytes32 id
+    ) external override onlyRole(FALLBACK_MANAGER_ROLE) {
+        delete queryRecords[id];
+        emit DataQueryFallback(id);
     }
 
     /// ********* interaction end ***********
@@ -237,14 +303,18 @@ contract OracleXClient is Initializable, UUPSUpgradeable, AccessControlUpgradeab
         if (verifier == address(0)) {
             revert Errors.InvalidVerifier();
         }
-        return verifier; 
+        return verifier;
     }
 
     function _signatureVerify(
         bytes32 _hash,
         bytes memory _signature
     ) internal view returns (bool) {
-        return hasRole(SIGNER_ROLE, _hash.toEthSignedMessageHash().recover(_signature));
+        return
+            hasRole(
+                SIGNER_ROLE,
+                _hash.toEthSignedMessageHash().recover(_signature)
+            );
     }
 
     function _authorizeUpgrade(
@@ -280,7 +350,14 @@ contract OracleXClient is Initializable, UUPSUpgradeable, AccessControlUpgradeab
         address[] memory _signers,
         address[] memory _verifierManagers
     ) public initializer {
-        _oracleXRolesInit(_admin, _fallbackManager, _relayers, _validators, _signers, _verifierManagers);
+        _oracleXRolesInit(
+            _admin,
+            _fallbackManager,
+            _relayers,
+            _validators,
+            _signers,
+            _verifierManagers
+        );
         __UUPSUpgradeable_init();
     }
 
@@ -326,14 +403,12 @@ contract OracleXClient is Initializable, UUPSUpgradeable, AccessControlUpgradeab
         }
     }
 
-    function _setSignerRole(
-        address[] memory _signers
-    ) internal {
+    function _setSignerRole(address[] memory _signers) internal {
         if (_signers.length == 0) {
             revert Errors.InvalidAddress();
         }
 
-        uint8 signerCounts; 
+        uint8 signerCounts;
 
         for (uint256 i = 0; i < _signers.length; i++) {
             if (_signers[i] == address(0)) {
@@ -345,7 +420,6 @@ contract OracleXClient is Initializable, UUPSUpgradeable, AccessControlUpgradeab
 
         _mutiSigThreshold = (signerCounts + 2) / 3;
     }
-    
 
     /// ********* initialize end ***********
 
