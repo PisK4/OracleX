@@ -150,7 +150,7 @@ contract OracleX is
         }
     }
 
-    function dataCommitmentBySignature(
+    function dataCommitmentBySignatureP(
         bytes4 callbackSelector,
         bytes32 requestId,
         address callbackAddress,
@@ -226,7 +226,7 @@ contract OracleX is
         );
     }
 
-    function dataCommitmentBySignature(
+    function dataCommitmentBySignatureA(
         bytes32 subId,
         bytes calldata data,
         bytes[] calldata dataCommitmentSignatures

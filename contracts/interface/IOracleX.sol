@@ -80,7 +80,7 @@ interface IOracleX {
 
     function dataCommitmentByProof(bytes calldata dataCommitmentProof) external;
 
-    function dataCommitmentBySignature(
+    function dataCommitmentBySignatureP(
         bytes4 callbackSelector,
         bytes32 requestId,
         address callbackAddress,
@@ -89,7 +89,7 @@ interface IOracleX {
         bytes[] calldata dataCommitmentSignatures
     ) external;
 
-    function dataCommitmentBySignature(
+    function dataCommitmentBySignatureA(
         bytes32 subId,
         bytes calldata data,
         bytes[] calldata dataCommitmentSignatures

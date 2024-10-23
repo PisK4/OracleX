@@ -11,7 +11,7 @@ import "@typechain/hardhat";
 import "@openzeppelin/hardhat-upgrades";
 
 const DEFAULT_MNEMONIC =
-  "here is where your twelve words mnemonic should be put my friend";
+  "smart yard rug river despair intact unfair scene symbol snow update goat";
 
 const dotenvConfigPath: string = process.env.DOTENV_CONFIG_PATH || "./.env";
 dotenvConfig({ path: resolve(__dirname, dotenvConfigPath) });

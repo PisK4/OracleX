@@ -54,6 +54,28 @@ contract FootballBetting is OracleXAccessBase, Ownable {
     ) OracleXAccessBase(_oracleX) Ownable(msg.sender) {
         matchResultSubscriptionId = _matchResultSubscriptionId;
         oddsSubscriptionId = _oddsSubscriptionId;
+
+        oracleX.queryPassiveDataStreamFromOracleX(
+            IOracleX.QueryPassiveMode({
+                subId: matchResultSubscriptionId,
+                authMode: bytes1(uint8(IOracleX.AuthMode.PROOF)),
+                callbackAddress: address(this),
+                managerAddress: owner(),
+                callbackGasLimit: 50000,
+                extraParams: new bytes(0)
+            })
+        );
+
+        oracleX.queryActiveDataStreamFromOracleX(
+            IOracleX.QueryActiveMode({
+                subId: oddsSubscriptionId,
+                authMode: bytes1(uint8(IOracleX.AuthMode.SIGNATURE)),
+                managerAddress: owner(),
+                extraParams: new bytes(0)
+            })
+        );
+
+        betStarted = true;
     }
 
     function bet(WINNER winner) external payable BettingIsAllowed {
@@ -103,29 +125,5 @@ contract FootballBetting is OracleXAccessBase, Ownable {
         address managerAddress;
         uint64 callbackGasLimit;
         bytes extraParams;
-    }
-
-    function betStart() external onlyOwner {
-        oracleX.queryPassiveDataStreamFromOracleX(
-            IOracleX.QueryPassiveMode({
-                subId: matchResultSubscriptionId,
-                authMode: bytes1(uint8(IOracleX.AuthMode.PROOF)),
-                callbackAddress: address(this),
-                managerAddress: owner(),
-                callbackGasLimit: 50000,
-                extraParams: new bytes(0)
-            })
-        );
-
-        oracleX.queryActiveDataStreamFromOracleX(
-            IOracleX.QueryActiveMode({
-                subId: oddsSubscriptionId,
-                authMode: bytes1(uint8(IOracleX.AuthMode.SIGNATURE)),
-                managerAddress: owner(),
-                extraParams: new bytes(0)
-            })
-        );
-
-        betStarted = true;
     }
 }
