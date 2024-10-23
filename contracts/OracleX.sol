@@ -128,7 +128,7 @@ contract OracleX is
             );
 
             if (!success) {
-                revert Errors.ProofVerificationFailure();
+                revert Errors.PassiveCallbackError();
             }
 
             emit DataCommitmentExecutedPassive(
@@ -147,6 +147,13 @@ contract OracleX is
             );
         } else {
             revert Errors.NotImplement();
+        }
+    }
+
+    function verify(bytes calldata proof) external {
+        (bool success, ) = verifiers[0x00].call(proof);
+        if (!success) {
+            revert Errors.ProofVerificationFailure();
         }
     }
 
@@ -345,6 +352,7 @@ contract OracleX is
     function initialize(
         address _admin,
         address _fallbackManager,
+        address _defaultVerifier,
         address[] memory _relayers,
         address[] memory _validators,
         address[] memory _signers,
@@ -353,6 +361,7 @@ contract OracleX is
         _oracleXRolesInit(
             _admin,
             _fallbackManager,
+            _defaultVerifier,
             _relayers,
             _validators,
             _signers,
@@ -364,11 +373,14 @@ contract OracleX is
     function _oracleXRolesInit(
         address _admin,
         address _fallbackManager,
+        address _defaultVerifier,
         address[] memory _relayers,
         address[] memory _validators,
         address[] memory _signers,
         address[] memory _verifierManagers
     ) internal {
+        verifiers[0x00] = _defaultVerifier;
+
         if (_admin == address(0)) {
             revert Errors.InvalidAddress();
         }

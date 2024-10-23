@@ -7,6 +7,7 @@ library Errors {
     error InvalidVerifier();
     error NotImplement();
     error ProofVerificationFailure();
+    error PassiveCallbackError();
     error CommitmentFailure();
     error QueryModeMismatch();
     error SignatureVerificationFailure();

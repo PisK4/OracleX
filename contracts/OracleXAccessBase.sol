@@ -24,10 +24,16 @@ abstract contract OracleXAccessBase {
         oracleX = IOracleX(_oracleX);
     }
 
+    // function receiveDataFromOracleX(
+    //     bytes calldata rawData
+    // ) external onlyOracleX {
+    //     _receiveRawDataFromOracleX(rawData);
+    // }
     function receiveDataFromOracleX(
+        bytes32 requestId,
         bytes calldata rawData
-    ) external onlyOracleX {
-        _receiveRawDataFromOracleX(rawData);
+    ) external {
+        // _receiveRawDataFromOracleX(rawData);
     }
 
     function _receiveRawDataFromOracleX(

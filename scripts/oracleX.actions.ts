@@ -1,6 +1,6 @@
 import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
 import hre, { ethers, upgrades } from "hardhat";
-import { FootballBetting, OracleX } from "../typechain-types";
+import { FootballBetting, OracleX, OracleX__factory } from "../typechain-types";
 import {
   AddressLike,
   BigNumberish,
@@ -87,4 +87,118 @@ export async function dataCommitmentBySignatureActiveMode(
     dataCommitment.data,
     [signature]
   );
+}
+
+export async function dataCommitmentByProofPassiveMode(
+  dataCommitment: DataCommitment1,
+  oracleX: OracleX
+) {
+  const publicInput: ProofPublicInput = {
+    taskId: 0,
+    callbackSelector: dataCommitment.callbackSelector,
+    queryMode: "0x00",
+    requestId: dataCommitment.requestId,
+    subId: dataCommitment.requestId,
+    callbackAddress: dataCommitment.callbackAddress,
+    callbackGasLimit: dataCommitment.callbackGasLimit,
+    data: dataCommitment.data,
+  };
+  const proof = publicInputEncode(publicInput);
+  // console.log("proof", proof);
+  return await oracleX.dataCommitmentByProof(proof);
+}
+
+interface ProofPublicInput {
+  taskId: BigNumberish;
+  callbackSelector: string;
+  queryMode: string;
+  requestId: Uint8Array;
+  subId: Uint8Array;
+  callbackAddress: AddressLike;
+  callbackGasLimit: BigNumberish;
+  data: string;
+}
+
+export const publicInputType = [
+  "uint64",
+  "bytes4",
+  "bytes1",
+  "bytes32",
+  "bytes32",
+  "address",
+  "uint64",
+  "bytes",
+];
+
+export function publicInputEncode(proofPublicInput: ProofPublicInput) {
+  const padTaskId = ethers.zeroPadValue(
+    toBeArray(proofPublicInput.taskId.toString()),
+    8
+  );
+  console.log("padTaskId", padTaskId);
+  const padCallbackSelector = ethers.zeroPadValue(
+    toBeArray(proofPublicInput.callbackSelector),
+    4
+  );
+  console.log("padCallbackSelector", padCallbackSelector);
+
+  const padQueryMode = ethers.zeroPadValue(
+    toBeArray(proofPublicInput.queryMode),
+    1
+  );
+
+  console.log("padQueryMode", padQueryMode);
+
+  const padRequestId = ethers.zeroPadValue(
+    toBeArray(ethers.hexlify(proofPublicInput.requestId)),
+    32
+  );
+
+  console.log("padRequestId", padRequestId);
+
+  const padSubId = ethers.zeroPadValue(
+    toBeArray(ethers.hexlify(proofPublicInput.subId)),
+    32
+  );
+
+  console.log("padSubId", padSubId);
+
+  const padCallbackAddress = ethers.zeroPadValue(
+    toBeArray(ethers.hexlify(proofPublicInput.callbackAddress.toString())),
+    20
+  );
+
+  console.log("padCallbackAddress", padCallbackAddress);
+
+  const padCallbackGasLimit = ethers.zeroPadValue(
+    toBeArray(proofPublicInput.callbackGasLimit.toString()),
+    8
+  );
+
+  console.log("padCallbackGasLimit", padCallbackGasLimit);
+
+  const padData = ethers.zeroPadValue(
+    toBeArray(ethers.hexlify(proofPublicInput.data)),
+    32
+  );
+
+  console.log("padData", padData);
+
+  const publicInputData =
+    "0x" +
+    padTaskId.replace("0x", "") +
+    padCallbackSelector.replace("0x", "") +
+    padQueryMode.replace("0x", "") +
+    padRequestId.replace("0x", "") +
+    padSubId.replace("0x", "") +
+    padCallbackAddress.replace("0x", "") +
+    padCallbackGasLimit.replace("0x", "") +
+    padData.replace("0x", "");
+
+  const encodedata = ethers.AbiCoder.defaultAbiCoder().encode(
+    ["bytes"],
+    [publicInputData]
+  );
+
+  return "0x8e760afe" + encodedata.replace("0x", "");
 }
