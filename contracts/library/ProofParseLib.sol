@@ -15,17 +15,6 @@ library ProofParseLib {
     function parseProof(
         bytes calldata proof
     ) internal pure returns (ProofPublicInput memory proofPublicInput) {
-        // proofPublicInput = ProofPublicInput({
-        //     taskId: uint64(bytes8(proof[4:12])),
-        //     callbackSelector: bytes4(proof[12:16]),
-        //     queryMode: bytes1(proof[16]),
-        //     requestId: bytes32(proof[17:49]),
-        //     subId: bytes32(proof[49:81]),
-        //     callbackAddress: address(bytes20(proof[81:101])),
-        //     callbackGasLimit: uint64(bytes8(proof[101:109])),
-        //     data: bytes(proof[109:])
-        // });
-
         proofPublicInput = ProofPublicInput({
             taskId: uint64(bytes8(proof[68:76])),
             callbackSelector: bytes4(proof[76:80]),
