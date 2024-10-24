@@ -77,7 +77,7 @@ describe("OracleX Test", () => {
       oracleXAddr: await oracleX.getAddress(),
       currChainId: chainId,
       subscriptionId: oddsSubscriptionId,
-      data: AbiCoder.encode(["uint256"], [2]),
+      data: AbiCoder.encode(["uint256"], [1]),
     };
 
     const tx = await dataCommitmentBySignatureActiveMode(
@@ -97,6 +97,7 @@ describe("OracleX Test", () => {
   });
 
   it("oracleX should be able to commit proof", async () => {
+    const AbiCoder = ethers.AbiCoder.defaultAbiCoder();
     const dataCommitment: DataCommitment1 = {
       oracleXAddr: await oracleX.getAddress(),
       currChainId: chainId,
@@ -106,11 +107,27 @@ describe("OracleX Test", () => {
       ),
       callbackAddress: await footballBetting.getAddress(),
       callbackGasLimit: 50000,
-      data: "0x0000000000000000000000000000000000000000000000000000000000000002",
+      data: AbiCoder.encode(["uint256"], [1]),
     };
 
     const tx = await dataCommitmentByProofPassiveMode(dataCommitment, oracleX);
     await tx.wait();
     console.log("commit proof tx: ", tx.hash);
+  });
+
+  it("footballBetting should be able to claim", async () => {
+    const balanceBefore = await ethers.provider.getBalance(
+      await signer.getAddress()
+    );
+    const tx = await footballBetting.claim();
+    await tx.wait();
+
+    const balanceAfter = await ethers.provider.getBalance(
+      await signer.getAddress()
+    );
+    console.log(`balance Before Claim: ${ethers.formatEther(balanceBefore)}`);
+    console.log(`balance After Claim: ${ethers.formatEther(balanceAfter)}`);
+    expect(balanceAfter).to.be.greaterThan(balanceBefore);
+    console.log("you won!");
   });
 });

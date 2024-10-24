@@ -6,20 +6,25 @@ import { exec } from "child_process";
 import { Wallet } from "ethers";
 
 export async function deployOracleX() {
-  const signer = (await ethers.getSigners())[0];
+  const signers = await ethers.getSigners();
+  const signer = signers[0];
+  const deployer = signers[2];
+  const deployerB = signers[3];
   const verifier = await deployProofVerifier(signer);
   console.log("verifier deployed to : ", verifier);
   const signerAddress = await signer.getAddress();
+  const deployerAddress = await deployer.getAddress();
+  const deployerBAddress = await deployerB.getAddress();
   const OracleXName = "OracleX";
   const OracleXFactory = await ethers.getContractFactory(OracleXName);
   const initializerArgs = [
     signerAddress,
     signerAddress,
     verifier,
-    [signerAddress],
-    [signerAddress],
-    [signerAddress],
-    [signerAddress],
+    [signerAddress, deployerAddress, deployerBAddress],
+    [signerAddress, deployerAddress, deployerBAddress],
+    [signerAddress, deployerAddress, deployerBAddress],
+    [signerAddress, deployerAddress, deployerBAddress],
   ];
   const OracleX = await upgrades.deployProxy(OracleXFactory, initializerArgs, {
     kind: "uups",
