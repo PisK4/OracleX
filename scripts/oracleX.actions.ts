@@ -31,7 +31,9 @@ export interface DataCommitment1 {
   requestId: Uint8Array;
   callbackAddress: string;
   callbackGasLimit: BigNumberish;
+  dataLength: BigNumberish;
   data: string;
+  proof: string;
 }
 
 export interface DataCommitment2 {
@@ -101,7 +103,9 @@ export async function dataCommitmentByProofPassiveMode(
     subId: dataCommitment.requestId,
     callbackAddress: dataCommitment.callbackAddress,
     callbackGasLimit: dataCommitment.callbackGasLimit,
+    dataLength: dataCommitment.dataLength,
     data: dataCommitment.data,
+    proof: dataCommitment.proof,
   };
   const proof = publicInputEncode(publicInput);
   // console.log("proof", proof);
@@ -116,7 +120,9 @@ interface ProofPublicInput {
   subId: Uint8Array;
   callbackAddress: AddressLike;
   callbackGasLimit: BigNumberish;
+  dataLength: BigNumberish;
   data: string;
+  proof: string;
 }
 
 export const publicInputType = [
@@ -127,6 +133,7 @@ export const publicInputType = [
   "bytes32",
   "address",
   "uint64",
+  "uint256",
   "bytes",
 ];
 
@@ -177,6 +184,11 @@ export function publicInputEncode(proofPublicInput: ProofPublicInput) {
 
   console.log("padCallbackGasLimit", padCallbackGasLimit);
 
+  const padDataLength = ethers.zeroPadValue(
+    toBeArray(proofPublicInput.dataLength.toString()),
+    32
+  );
+
   const padData = ethers.zeroPadValue(
     toBeArray(ethers.hexlify(proofPublicInput.data)),
     32
@@ -193,7 +205,9 @@ export function publicInputEncode(proofPublicInput: ProofPublicInput) {
     padSubId.replace("0x", "") +
     padCallbackAddress.replace("0x", "") +
     padCallbackGasLimit.replace("0x", "") +
-    padData.replace("0x", "");
+    padDataLength.replace("0x", "") +
+    padData.replace("0x", "") +
+    proofPublicInput.proof.replace("0x", "");
 
   const encodedata = ethers.AbiCoder.defaultAbiCoder().encode(
     ["bytes"],

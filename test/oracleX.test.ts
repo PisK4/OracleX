@@ -107,7 +107,9 @@ describe("OracleX Test", () => {
       ),
       callbackAddress: await footballBetting.getAddress(),
       callbackGasLimit: 50000,
+      dataLength: 32,
       data: AbiCoder.encode(["uint256"], [1]),
+      proof: ethers.hexlify(ethers.randomBytes(32)),
     };
 
     const tx = await dataCommitmentByProofPassiveMode(dataCommitment, oracleX);
