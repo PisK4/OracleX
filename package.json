@@ -4,7 +4,9 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "npx hardhat test"
+    "test": "npx hardhat test",
+    "oracle-test": "npx hardhat test test/oracleX.test.ts",
+    "deploy": "npx hardhat test test/oracleX.deploy.test.ts --network localhost"
   },
   "author": "Pis",
   "license": "MIT",

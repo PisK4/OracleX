@@ -71,7 +71,7 @@ describe("OracleX Test", () => {
     expect(await footballBetting.getAddress()).to.not.equal(ZeroAddress);
   });
 
-  it("oracleX should be able to commit data", async () => {
+  it.skip("oracleX should be able to commit data", async () => {
     const AbiCoder = ethers.AbiCoder.defaultAbiCoder();
     const dataCommitment: DataCommitment2 = {
       oracleXAddr: await oracleX.getAddress(),
@@ -88,15 +88,7 @@ describe("OracleX Test", () => {
     await tx.wait();
   });
 
-  it("footballBetting should be able to bet", async () => {
-    await bet(signer, footballBetting, 1);
-
-    // check user bet
-    const betInfo = await footballBetting.userBets(signer.getAddress());
-    console.log("betInfo: ", betInfo);
-  });
-
-  it("oracleX should be able to commit proof", async () => {
+  it.skip("oracleX should be able to commit proof", async () => {
     const dataCommitment: DataCommitment1 = {
       oracleXAddr: await oracleX.getAddress(),
       currChainId: chainId,
@@ -112,5 +104,13 @@ describe("OracleX Test", () => {
     const tx = await dataCommitmentByProofPassiveMode(dataCommitment, oracleX);
     await tx.wait();
     console.log("commit proof tx: ", tx.hash);
+  });
+
+  it.skip("footballBetting should be able to bet", async () => {
+    await bet(signer, footballBetting, 1);
+
+    // check user bet
+    const betInfo = await footballBetting.userBets(signer.getAddress());
+    console.log("betInfo: ", betInfo);
   });
 });

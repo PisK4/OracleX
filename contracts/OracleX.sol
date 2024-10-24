@@ -49,6 +49,12 @@ contract OracleX is
 
     /// ********* interaction start ***********
 
+    /**
+     * @notice queryPassiveDataStreamFromOracleX
+     * @dev submit a subscription request to OracleX in passive mode
+     *      callbackAddress will be received data from OracleX
+     * @return requestId
+     */
     function queryPassiveDataStreamFromOracleX(
         QueryPassiveMode calldata dataQuery
     ) external override returns (bytes32 requestId) {
@@ -62,6 +68,12 @@ contract OracleX is
         });
         emit QueryPassiveModeSubmitted(requestId, _nonce++, dataQuery);
     }
+
+    /**
+     * @notice queryActiveDataStreamFromOracleX
+     * @dev submit a subscription request to OracleX in active mode
+     *      OrcleX will submit data to current contract
+     */
 
     function queryActiveDataStreamFromOracleX(
         QueryActiveMode calldata dataQuery
@@ -82,6 +94,10 @@ contract OracleX is
         dataQuery = activeData[subId];
     }
 
+    /**
+     * @notice dataCommitmentByProof
+     * @dev commit zk proof to OracleX, the OracleX circuit will verify it
+     */
     function dataCommitmentByProof(
         bytes calldata dataCommitmentProof
     ) external override onlyRole(RELAYER_ROLE) nonReentrant {
@@ -150,13 +166,10 @@ contract OracleX is
         }
     }
 
-    function verify(bytes calldata proof) external {
-        (bool success, ) = verifiers[0x00].call(proof);
-        if (!success) {
-            revert Errors.ProofVerificationFailure();
-        }
-    }
-
+    /**
+     * @notice dataCommitmentBySignatureP
+     * @dev Submit rawdata and signature information from trusted signers in passive mode
+     */
     function dataCommitmentBySignatureP(
         bytes4 callbackSelector,
         bytes32 requestId,
@@ -233,6 +246,10 @@ contract OracleX is
         );
     }
 
+    /**
+     * @notice dataCommitmentBySignatureA
+     * @dev Submit rawdata and signature information from trusted signers in active mode
+     */
     function dataCommitmentBySignatureA(
         bytes32 subId,
         bytes calldata data,

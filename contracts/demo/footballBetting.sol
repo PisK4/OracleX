@@ -22,6 +22,9 @@ event MatchResultReceived(WINNER indexed winner, uint256 timestamp);
 contract FootballBetting is OracleXAccessBase, Ownable {
     error AlreadyBet();
     error OddsError();
+    error BettingNotAllowed();
+    error cliaimNotAllowed();
+    error UserBetWrong();
     bytes32 public matchResultSubscriptionId;
     bytes32 public oddsSubscriptionId;
 
@@ -35,14 +38,14 @@ contract FootballBetting is OracleXAccessBase, Ownable {
 
     modifier BettingIsAllowed() {
         if (!betStarted) {
-            revert AccessDenied();
+            revert BettingNotAllowed();
         }
         _;
     }
 
     modifier ClaimIsAllowed() {
         if (betStarted) {
-            revert AccessDenied();
+            revert cliaimNotAllowed();
         }
         _;
     }
@@ -104,13 +107,14 @@ contract FootballBetting is OracleXAccessBase, Ownable {
     function claim() external ClaimIsAllowed {
         Bet memory _bet = userBets[msg.sender];
         if (_bet.winner != matchResult) {
-            revert AccessDenied();
+            revert UserBetWrong();
         }
         delete userBets[msg.sender];
         payable(msg.sender).transfer(_bet.betValue * _bet.odds);
     }
 
     function _receiveRawDataFromOracleX(
+        bytes32 /*requestId*/,
         bytes calldata rawData
     ) internal override {
         matchResult = WINNER(abi.decode(rawData, (uint8)));
